@@ -110,7 +110,11 @@ sessions       ← OAuth 세션
 ```bash
 node scripts/generate-hash.mjs <your-passphrase>
 npx wrangler pages secret put AUTH_PASSPHRASE_HASH --project-name=utajlpt
+# 시크릿 등록만으로는 functions에 반영 안 됨 — 반드시 재배포까지:
+npm run deploy
 ```
+
+> ⚠️ CF Pages는 secret을 바꿔도 자동 재배포 안 함. `wrangler pages deploy` 한 번 더 돌려야 새 secret이 적용돼.
 
 **Google OAuth (선택, 둘 다 설정해야 활성화)**
 
