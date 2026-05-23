@@ -7,4 +7,4 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "utajlpt-db"
-database_id = "PLACEHOLDER_FILL_AFTER_CREATE"
+database_id = "5d8a9723-87ae-43cf-b450-5e219acf7cbb"
