@@ -9,4 +9,5 @@ scripts/.cache/
 *.tsbuildinfo
 .wrangler
 .dev.vars
+public/data/
 
