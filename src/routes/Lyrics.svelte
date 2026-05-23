@@ -5,8 +5,9 @@
   import { saveSong } from '../lib/songs';
   import { searchVocab } from '../lib/vocab';
   import { setLinks as setSongVocabLinks } from '../lib/song-vocab';
-  import { login, checkAuth } from '../lib/auth';
+  import { login, googleLogin, checkAuth, getOAuthConfig, type OAuthConfig } from '../lib/auth';
   import { onMount } from 'svelte';
+  // GsiCredentialResponse / Window.google are declared in src/global.d.ts
 
   let mode: 'search' | 'paste' = $state('search');
   let searchQuery = $state('');
@@ -27,10 +28,64 @@
   let authed = $state(false);
   let passphrase = $state('');
   let loggingIn = $state(false);
+  let oauthConfig = $state<OAuthConfig>({ enabled: false });
+  let gsiButtonEl: HTMLDivElement | null = $state(null);
+
+  function loadGisScript(): Promise<void> {
+    if (window.google?.accounts?.id) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-gsi]');
+      if (existing) { existing.addEventListener('load', () => resolve()); return; }
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.async = true;
+      s.defer = true;
+      s.dataset.gsi = '1';
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('GIS script load failed'));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function handleGoogleCredential(resp: GsiCredentialResponse) {
+    error = null;
+    loggingIn = true;
+    try {
+      await googleLogin(resp.credential);
+      authed = true;
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      loggingIn = false;
+    }
+  }
+
+  async function setupGoogleSignIn() {
+    if (!oauthConfig.enabled || !oauthConfig.clientId || !gsiButtonEl) return;
+    try {
+      await loadGisScript();
+      const gid = window.google!.accounts.id;
+      gid.initialize({
+        client_id: oauthConfig.clientId,
+        callback: handleGoogleCredential
+      });
+      gid.renderButton(gsiButtonEl, { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with' });
+    } catch (e) {
+      error = `Google 로그인 초기화 실패: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  }
 
   onMount(async () => {
     authed = await checkAuth();
+    oauthConfig = await getOAuthConfig();
     authChecked = true;
+  });
+
+  // Render the Google button whenever the gate becomes visible & el is ready
+  $effect(() => {
+    if (authChecked && !authed && oauthConfig.enabled && gsiButtonEl) {
+      setupGoogleSignIn();
+    }
   });
 
   async function doLogin() {
@@ -162,9 +217,19 @@
     <article class="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/30">
       <h2 class="text-sm font-medium text-amber-800 dark:text-amber-200">로그인이 필요해</h2>
       <p class="mt-1 text-xs text-amber-700 dark:text-amber-300">
-        가사 분석은 서버 Gemini 프록시를 거쳐서 진행돼. passphrase로 로그인해줘.
+        가사 분석은 서버 Gemini 프록시를 거쳐서 진행돼.
       </p>
-      <div class="mt-3 flex gap-2">
+
+      {#if oauthConfig.enabled}
+        <div class="mt-3 flex justify-center" bind:this={gsiButtonEl}></div>
+        <div class="my-3 flex items-center gap-2 text-[10px] text-amber-700/60 dark:text-amber-300/60">
+          <span class="h-px flex-1 bg-amber-200 dark:bg-amber-700"></span>
+          <span>또는 passphrase</span>
+          <span class="h-px flex-1 bg-amber-200 dark:bg-amber-700"></span>
+        </div>
+      {/if}
+
+      <div class="mt-2 flex gap-2">
         <input
           type="password"
           bind:value={passphrase}

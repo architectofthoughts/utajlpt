@@ -103,6 +103,30 @@ sessions       ← OAuth 세션
 - 새 가사 분석·LRCLIB 검색·OAuth → 온라인 필수
 - 온라인 복귀 시 D1 백그라운드 동기화
 
+## 인증 설정
+
+**Passphrase (기본, 항상 켜져 있음)**
+
+```bash
+node scripts/generate-hash.mjs <your-passphrase>
+npx wrangler pages secret put AUTH_PASSPHRASE_HASH --project-name=utajlpt
+```
+
+**Google OAuth (선택, 둘 다 설정해야 활성화)**
+
+1. Google Cloud Console → APIs & Services → Credentials → Create OAuth 2.0 Client ID (Web).
+2. Authorized JavaScript origins에 `https://utajlpt.pages.dev` 추가.
+3. 발급된 클라이언트 ID를 시크릿으로:
+   ```bash
+   npx wrangler pages secret put OAUTH_CLIENT_ID --project-name=utajlpt
+   npx wrangler pages secret put OWNER_EMAIL --project-name=utajlpt
+   ```
+   - `OAUTH_CLIENT_ID`: 위에서 발급받은 ID (브라우저에 노출되는 값이라 비밀은 아님, 단 정정 편의상 secret 사용).
+   - `OWNER_EMAIL`: 허용 이메일 (예: `jaceyoung0705@gmail.com`).
+4. 다음 배포부터 `/api/auth/config`가 `enabled:true`를 반환하고, Lyrics 로그인 게이트에 Google 버튼이 표시됨.
+
+passphrase와 OAuth는 동시 작동 — Google 로그인이 안 되는 환경(예: 빌드 검증)에선 passphrase로 fallback.
+
 ## 향후 확장
 
 - 음성 (TTS) — Web Speech API

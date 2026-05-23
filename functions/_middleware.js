@@ -13,7 +13,9 @@ export async function onRequest(context) {
     }
 
     // Public endpoints (no session required)
-    if (url.pathname === '/api/auth/login') {
+    if (url.pathname === '/api/auth/login'
+        || url.pathname === '/api/auth/google'
+        || url.pathname === '/api/auth/config') {
         return next();
     }
 
