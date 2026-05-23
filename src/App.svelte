@@ -6,6 +6,11 @@
   import List from './routes/List.svelte';
   import Add from './routes/Add.svelte';
   import SettingsPage from './routes/Settings.svelte';
+  import Library from './routes/Library.svelte';
+  import Lyrics from './routes/Lyrics.svelte';
+  import Song from './routes/Song.svelte';
+  import Word from './routes/Word.svelte';
+  import Stats from './routes/Stats.svelte';
   import BottomNav from './components/BottomNav.svelte';
   import { ensureVocabLoaded } from './lib/vocab';
 
@@ -14,6 +19,11 @@
     '/groups': Groups,
     '/list': List,
     '/add': Add,
+    '/library': Library,
+    '/lyrics': Lyrics,
+    '/songs/:id': Song,
+    '/word/:id': Word,
+    '/stats': Stats,
     '/settings': SettingsPage
   };
 
