@@ -1,0 +1,10 @@
+name = "utajlpt"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "dist"
+
+# D1 binding (production)
+# database_id를 wrangler d1 create utajlpt-db 후 채워넣을 것
+[[d1_databases]]
+binding = "DB"
+database_name = "utajlpt-db"
+database_id = "PLACEHOLDER_FILL_AFTER_CREATE"
