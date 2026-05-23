@@ -1,11 +1,57 @@
 <script lang="ts">
   import { settings, updateSettings } from '../lib/stores/settings';
   import { hardReset } from '../lib/vocab';
+  import { exportLocalBackup, downloadBackup, importLocalBackup, syncFullToServer, type BackupPayload } from '../lib/data-transfer';
   import type { JlptLevel } from '../types';
 
   const levels: JlptLevel[] = ['N5', 'N4', 'N3', 'N2', 'N1'];
 
   let resetting = $state(false);
+  let backupBusy = $state(false);
+  let backupMsg = $state<string | null>(null);
+  let restoreInput: HTMLInputElement | null = $state(null);
+
+  async function handleBackup() {
+    backupBusy = true;
+    backupMsg = null;
+    try {
+      const payload = await exportLocalBackup();
+      downloadBackup(payload);
+      backupMsg = `${payload.progress.length}개 진도를 백업 파일로 받았어.`;
+    } catch (e) {
+      backupMsg = `백업 실패: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      backupBusy = false;
+    }
+  }
+
+  async function handleSyncToServer() {
+    backupBusy = true;
+    backupMsg = null;
+    try {
+      const r = await syncFullToServer();
+      backupMsg = `서버 D1에 ${r.progress}개 진도를 동기화했어.`;
+    } catch (e) {
+      backupMsg = `동기화 실패: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      backupBusy = false;
+    }
+  }
+
+  async function handleRestoreFile(file: File) {
+    backupBusy = true;
+    backupMsg = null;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text) as BackupPayload;
+      const n = await importLocalBackup(payload);
+      backupMsg = `${n}개 진도를 로컬에 복원했어. 새로고침 권장.`;
+    } catch (e) {
+      backupMsg = `복원 실패: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      backupBusy = false;
+    }
+  }
 
   function toggleLevel(l: JlptLevel) {
     settings.update(s => {
@@ -109,12 +155,45 @@
     </div>
   </div>
 
-  <div class="card-surface flex flex-col gap-3 p-4 opacity-60">
-    <h2 class="text-sm font-semibold">기기 동기화 (예정)</h2>
+  <div class="card-surface flex flex-col gap-3 p-4">
+    <h2 class="text-sm font-semibold">데이터 백업·복원</h2>
     <p class="text-xs text-slate-500">
-      6자리 핀으로 다른 기기와 같은 진도를 공유하는 기능. D1 + Worker 페이로드 연결 후 활성화.
+      회독 진도를 JSON으로 백업하거나 다른 기기·다른 앱(aim)에서 가져온 백업을 복원해.
+      서버 동기화는 로그인 상태에서 D1로 진도를 일괄 업로드.
     </p>
-    <button class="btn-ghost cursor-not-allowed text-xs" disabled>핀 발급 (미구현)</button>
+    <div class="flex flex-wrap gap-2">
+      <button
+        type="button"
+        onclick={handleBackup}
+        disabled={backupBusy}
+        class="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-700 dark:hover:bg-slate-600"
+      >📥 백업 받기</button>
+      <button
+        type="button"
+        onclick={() => restoreInput?.click()}
+        disabled={backupBusy}
+        class="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-700 dark:hover:bg-slate-600"
+      >📤 백업 복원</button>
+      <button
+        type="button"
+        onclick={handleSyncToServer}
+        disabled={backupBusy}
+        class="rounded-lg bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50"
+      >☁️ 서버로 동기화</button>
+    </div>
+    <input
+      type="file"
+      bind:this={restoreInput}
+      accept="application/json"
+      class="hidden"
+      onchange={(e) => {
+        const f = (e.currentTarget as HTMLInputElement).files?.[0];
+        if (f) handleRestoreFile(f);
+      }}
+    />
+    {#if backupMsg}
+      <p class="text-xs text-slate-600 dark:text-slate-300">{backupMsg}</p>
+    {/if}
   </div>
 
   <div class="card-surface flex flex-col gap-3 p-4">
