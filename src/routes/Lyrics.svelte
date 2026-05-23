@@ -4,6 +4,7 @@
   import type { AnalysisResult, LrcResult, SongInference } from '../lib/lyrics';
   import { saveSong } from '../lib/songs';
   import { searchVocab } from '../lib/vocab';
+  import { setLinks as setSongVocabLinks } from '../lib/song-vocab';
   import { login, checkAuth } from '../lib/auth';
   import { onMount } from 'svelte';
 
@@ -119,6 +120,26 @@
         difficultyLabel: difficulty.label,
         jlptDistribution: difficulty.distribution
       });
+
+      // Build song_vocab links — for each JMdict-matched word, find the first
+      // line where its term appears, so /word/:id can jump back here.
+      const links = enrichedVocab
+        .filter(v => v.vocabId)
+        .map(v => {
+          const idx = result.lyrics.findIndex(l => l.jp.includes(v.term));
+          return {
+            vocabId: v.vocabId!,
+            lineIndex: idx >= 0 ? idx : 0,
+            surfaceForm: idx >= 0 ? v.term : null
+          };
+        });
+      if (links.length > 0) {
+        try { await setSongVocabLinks(saved.id, links); }
+        catch (e) {
+          // Non-fatal — song is saved, just no cross-references.
+          console.warn('song-vocab link save failed:', e);
+        }
+      }
 
       // Done — navigate to song detail
       push(`/songs/${saved.id}`);

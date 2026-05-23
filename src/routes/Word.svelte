@@ -2,8 +2,10 @@
   // 단어 상세 + 이 단어가 등장한 노래 리스트
   import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
-  import { searchVocab } from '../lib/vocab';
+  import { getVocabById } from '../lib/vocab';
   import { db } from '../lib/db';
+  import { addWord } from '../lib/study-engine';
+  import { getByVocab, type AppearanceRow } from '../lib/song-vocab';
   import type { VocabEntry, ProgressRow } from '../types';
 
   type Params = { params?: { id?: string } };
@@ -11,40 +13,41 @@
 
   let entry = $state<VocabEntry | null>(null);
   let progress = $state<ProgressRow | null>(null);
-  let appearances = $state<Array<{ songId: string; title: string; artist: string; lineIndex: number; surfaceForm: string | null }>>([]);
+  let appearances = $state<AppearanceRow[]>([]);
   let error = $state<string | null>(null);
   let loading = $state(true);
+  let adding = $state(false);
+
+  async function loadProgress(id: string) {
+    progress = (await db.progress.get(id)) ?? null;
+  }
 
   onMount(async () => {
     const id = params?.id;
-    if (!id) {
-      error = '잘못된 경로야.';
-      loading = false;
-      return;
-    }
+    if (!id) { error = '잘못된 경로야.'; loading = false; return; }
 
     try {
-      // Lookup vocab entry (using existing search infrastructure)
-      const all = await searchVocab('');
-      entry = all.find(e => e.id === id) || null;
-
-      // Local progress
-      const prow = await db.progress.get(id);
-      progress = prow || null;
-
-      // Server: which songs this word appears in
-      try {
-        const res = await fetch(`/api/song-vocab?vocab=${encodeURIComponent(id)}`);
-        if (res.ok) {
-          appearances = await res.json();
-        }
-      } catch { /* server optional */ }
+      entry = (await getVocabById(id)) ?? null;
+      await loadProgress(id);
+      try { appearances = await getByVocab(id); }
+      catch { /* server optional */ }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
       loading = false;
     }
   });
+
+  async function handleAdd() {
+    if (!entry) return;
+    adding = true;
+    try {
+      await addWord(entry);
+      await loadProgress(entry.id);
+    } finally {
+      adding = false;
+    }
+  }
 </script>
 
 <section class="mx-auto w-full max-w-md space-y-5 px-4 pt-6">
@@ -72,8 +75,19 @@
         {/if}
         {#if progress?.mastered}
           <span class="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">✓ 마스터</span>
+        {:else if progress?.addedAt && progress.addedAt > 0}
+          <span class="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">단어장</span>
         {/if}
       </div>
+
+      {#if !progress?.addedAt || progress.addedAt === 0}
+        <button
+          type="button"
+          onclick={handleAdd}
+          disabled={adding}
+          class="mt-3 w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+        >{adding ? '추가 중…' : '+ 내 단어장에 추가'}</button>
+      {/if}
     </header>
 
     {#if appearances.length > 0}

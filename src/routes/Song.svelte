@@ -4,6 +4,10 @@
   import { getSong, deleteSong } from '../lib/songs';
   import type { SongDetail } from '../lib/songs';
   import type { LyricLine, VocabHit } from '../lib/lyrics';
+  import { db } from '../lib/db';
+  import { addWord } from '../lib/study-engine';
+  import { getVocabById } from '../lib/vocab';
+  import type { ProgressRow } from '../types';
 
   type Params = { params?: { id?: string } };
   let { params }: Params = $props();
@@ -36,17 +40,50 @@
     openChapters = next;
   }
 
+  // Progress lookup for each vocab item (keyed by vocabId)
+  let progressMap = $state<Record<string, ProgressRow>>({});
+  let addingId = $state<string | null>(null);
+
+  async function refreshProgress(vocabIds: string[]) {
+    if (vocabIds.length === 0) return;
+    const rows = await db.progress.bulkGet(vocabIds);
+    const next: Record<string, ProgressRow> = {};
+    rows.forEach((r, i) => { if (r) next[vocabIds[i]] = r; });
+    progressMap = next;
+  }
+
   onMount(async () => {
     const id = params?.id;
     if (!id) { error = '잘못된 경로야.'; loading = false; return; }
     try {
       song = await getSong(id);
+      // Load progress for all matched vocab
+      const ids = song.vocab.map(v => v.vocabId).filter((x): x is string => !!x);
+      await refreshProgress(ids);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
       loading = false;
     }
   });
+
+  async function addToDeck(v: VocabHit) {
+    if (!v.vocabId) return;
+    addingId = v.vocabId;
+    try {
+      const entry = await getVocabById(v.vocabId);
+      if (!entry) {
+        alert('JMdict에서 단어를 찾을 수 없어. 다시 빌드해야 할 수도 있어.');
+        return;
+      }
+      await addWord(entry);
+      // Refresh just this row
+      const row = await db.progress.get(v.vocabId);
+      if (row) progressMap = { ...progressMap, [v.vocabId]: row };
+    } finally {
+      addingId = null;
+    }
+  }
 
   async function handleDelete() {
     if (!song) return;
@@ -262,38 +299,56 @@
       {#if song.vocab.length === 0}
         <p class="text-sm text-slate-500">추출된 단어가 없어.</p>
       {:else}
-        <p class="text-xs text-slate-500">총 {song.vocab.length}개. 카드를 클릭하면 단어 상세로.</p>
+        <p class="text-xs text-slate-500">총 {song.vocab.length}개 · 사전 매칭된 단어는 단어장에 추가할 수 있어.</p>
         <ul class="space-y-2">
           {#each song.vocab as v, i (v.term + i)}
-            <li>
-              <button
-                type="button"
-                onclick={() => v.vocabId ? push(`/word/${v.vocabId}`) : null}
-                class="w-full rounded-xl bg-white p-3 text-left shadow-sm transition hover:shadow dark:bg-slate-800"
-                disabled={!v.vocabId}
-                class:opacity-70={!v.vocabId}
-              >
-                <div class="flex items-baseline justify-between gap-2">
-                  <div>
-                    <span class="font-jp text-base font-medium">{v.term}</span>
-                    {#if v.read && v.read !== v.term}
-                      <span class="ml-2 text-xs text-slate-500 font-jp">{v.read}</span>
-                    {/if}
-                  </div>
-                  <div class="flex shrink-0 gap-1 text-[10px]">
-                    {#if v.jlpt}
-                      <span class="rounded bg-sky-100 px-1.5 py-0.5 font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">{v.jlpt}</span>
-                    {/if}
-                    {#if v.vocabId}
-                      <span class="rounded bg-emerald-100 px-1.5 py-0.5 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">사전</span>
-                    {/if}
-                  </div>
+            {@const prog = v.vocabId ? progressMap[v.vocabId] : undefined}
+            {@const inDeck = prog?.addedAt && prog.addedAt > 0}
+            {@const mastered = prog?.mastered === 1}
+            <li class="rounded-xl bg-white p-3 shadow-sm dark:bg-slate-800">
+              <div class="flex items-baseline justify-between gap-2">
+                <div>
+                  <span class="font-jp text-base font-medium">{v.term}</span>
+                  {#if v.read && v.read !== v.term}
+                    <span class="ml-2 text-xs text-slate-500 font-jp">{v.read}</span>
+                  {/if}
                 </div>
-                <div class="mt-1 text-sm text-slate-700 dark:text-slate-300">{v.meaning}</div>
-                {#if v.description}
-                  <div class="mt-1.5 text-xs text-slate-500 leading-relaxed">{v.description}</div>
+                <div class="flex shrink-0 gap-1 text-[10px]">
+                  {#if v.jlpt}
+                    <span class="rounded bg-sky-100 px-1.5 py-0.5 font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">{v.jlpt}</span>
+                  {/if}
+                  {#if mastered}
+                    <span class="rounded bg-emerald-100 px-1.5 py-0.5 font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">✓ 마스터</span>
+                  {:else if inDeck}
+                    <span class="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">단어장</span>
+                  {/if}
+                </div>
+              </div>
+              <div class="mt-1 text-sm text-slate-700 dark:text-slate-300">{v.meaning}</div>
+              {#if v.description}
+                <div class="mt-1.5 text-xs text-slate-500 leading-relaxed">{v.description}</div>
+              {/if}
+              <div class="mt-3 flex gap-2">
+                {#if v.vocabId}
+                  <button
+                    type="button"
+                    onclick={() => push(`/word/${v.vocabId}`)}
+                    class="flex-1 rounded-lg bg-slate-100 px-2 py-1.5 text-xs font-medium hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600"
+                  >상세</button>
+                  {#if !inDeck}
+                    <button
+                      type="button"
+                      onclick={() => addToDeck(v)}
+                      disabled={addingId === v.vocabId}
+                      class="flex-1 rounded-lg bg-emerald-500 px-2 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                    >{addingId === v.vocabId ? '추가 중…' : '+ 단어장'}</button>
+                  {:else}
+                    <span class="flex-1 rounded-lg bg-emerald-50 px-2 py-1.5 text-center text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">✓ 단어장에 있음</span>
+                  {/if}
+                {:else}
+                  <span class="flex-1 rounded-lg bg-amber-50 px-2 py-1.5 text-center text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">사전 매칭 없음</span>
                 {/if}
-              </button>
+              </div>
             </li>
           {/each}
         </ul>

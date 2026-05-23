@@ -56,6 +56,10 @@ export async function getAllVocab(): Promise<VocabEntry[]> {
   return memoryCache;
 }
 
+export async function getVocabById(id: string): Promise<VocabEntry | undefined> {
+  return db.vocab.get(id);
+}
+
 export async function searchVocab(query: string, limit = 50): Promise<VocabEntry[]> {
   const all = await getAllVocab();
   if (!query.trim()) return all.slice(0, limit);
