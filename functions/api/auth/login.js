@@ -39,9 +39,11 @@ export async function onRequestPost(context) {
     // Clean up expired sessions
     await env.DB.prepare('DELETE FROM sessions WHERE datetime(expires_at) < datetime(\'now\')').run();
 
+    // user_email: OAuth로 교체되면 이메일이 들어옴. 지금은 passphrase 인증이라 placeholder.
+    const userEmail = env.OWNER_EMAIL || 'passphrase@local';
     await env.DB.prepare(
-        'INSERT INTO sessions (id, expires_at) VALUES (?, ?)'
-    ).bind(sessionId, expiresAt).run();
+        'INSERT INTO sessions (id, user_email, expires_at) VALUES (?, ?, ?)'
+    ).bind(sessionId, userEmail, expiresAt).run();
 
     return Response.json({ ok: true }, {
         headers: {
